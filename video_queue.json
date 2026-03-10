@@ -1,0 +1,46 @@
+{
+  "videos": [
+    {
+      "file": "videos/video_01.mp4",
+      "title": "Mi Video #1 - Título aquí",
+      "description": "Descripción del video aquí.\n\nPuedes usar múltiples líneas.\n\n#etiqueta1 #etiqueta2",
+      "tags": ["etiqueta1", "etiqueta2", "canal"],
+      "category": "22",
+      "language": "es",
+      "privacy": "public",
+      "made_for_kids": false,
+      "uploaded": false,
+      "uploaded_at": null,
+      "youtube_id": null,
+      "youtube_url": null
+    },
+    {
+      "file": "videos/video_02.mp4",
+      "title": "Mi Video #2 - Título aquí",
+      "description": "Descripción del video aquí.",
+      "tags": ["etiqueta1", "etiqueta2"],
+      "category": "22",
+      "language": "es",
+      "privacy": "public",
+      "made_for_kids": false,
+      "uploaded": false,
+      "uploaded_at": null,
+      "youtube_id": null,
+      "youtube_url": null
+    },
+    {
+      "file": "videos/video_03.mp4",
+      "title": "Mi Video #3 - Título aquí",
+      "description": "Descripción del video aquí.",
+      "tags": ["etiqueta1", "etiqueta2"],
+      "category": "22",
+      "language": "es",
+      "privacy": "public",
+      "made_for_kids": false,
+      "uploaded": false,
+      "uploaded_at": null,
+      "youtube_id": null,
+      "youtube_url": null
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+# Videos (no subir archivos de video al repositorio)
+videos/
+
+# Credenciales locales
+client_secret*.json
+*.credentials.json
+token.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
