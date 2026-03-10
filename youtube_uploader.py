@@ -1,41 +1,38 @@
 #!/usr/bin/env python3
 """
-Automatización de subida diaria a YouTube.
-Lee la cola de videos (video_queue.json) y sube el siguiente video pendiente.
+Sube un video a YouTube usando la YouTube Data API v3.
 
-Requiere las siguientes variables de entorno (GitHub Secrets):
-  - YOUTUBE_CLIENT_ID
-  - YOUTUBE_CLIENT_SECRET
-  - YOUTUBE_REFRESH_TOKEN
+Requiere variables de entorno:
+  YOUTUBE_CLIENT_ID
+  YOUTUBE_CLIENT_SECRET
+  YOUTUBE_REFRESH_TOKEN
 """
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
-from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
 
 
-QUEUE_FILE = Path(__file__).parent / "video_queue.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 
-def get_authenticated_service():
-    """Autentica con YouTube Data API usando credenciales OAuth2 del entorno."""
-    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+def _get_service():
+    client_id     = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
     refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
 
     if not all([client_id, client_secret, refresh_token]):
-        print("ERROR: Faltan variables de entorno de autenticación.")
-        print("  Necesitas: YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN")
-        sys.exit(1)
+        raise EnvironmentError(
+            "Faltan variables de entorno: "
+            "YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN"
+        )
 
     creds = Credentials(
         token=None,
@@ -45,70 +42,51 @@ def get_authenticated_service():
         client_secret=client_secret,
         scopes=SCOPES,
     )
-
-    # Refresca el token automáticamente
     creds.refresh(Request())
     return build("youtube", "v3", credentials=creds)
 
 
-def load_queue():
-    """Carga la cola de videos desde el archivo JSON."""
-    if not QUEUE_FILE.exists():
-        print(f"ERROR: No se encontró {QUEUE_FILE}")
-        sys.exit(1)
-
-    with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_queue(data):
-    """Guarda la cola actualizada en el archivo JSON."""
-    with open(QUEUE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-
-def get_next_video(queue_data):
-    """Devuelve el índice y datos del siguiente video pendiente."""
-    for i, video in enumerate(queue_data.get("videos", [])):
-        if not video.get("uploaded", False):
-            return i, video
-    return None, None
-
-
-def upload_video(service, video_data):
-    """Sube un video a YouTube y devuelve el ID del video subido."""
-    video_file = Path(video_data["file"])
-
+def upload_video(
+    video_path: str,
+    title: str,
+    description: str,
+    tags: list[str],
+    category: str = "28",
+    language: str = "es",
+    privacy: str = "public",
+) -> str:
+    """
+    Sube el video y devuelve la URL de YouTube.
+    """
+    video_file = Path(video_path)
     if not video_file.exists():
-        raise FileNotFoundError(f"Archivo de video no encontrado: {video_file}")
+        raise FileNotFoundError(f"Video no encontrado: {video_path}")
+
+    size_mb = video_file.stat().st_size / 1_000_000
+    print(f"  Subiendo a YouTube: {title[:60]}")
+    print(f"  Archivo: {video_file.name} ({size_mb:.1f} MB)")
+
+    service = _get_service()
 
     body = {
         "snippet": {
-            "title": video_data.get("title", "Video sin título"),
-            "description": video_data.get("description", ""),
-            "tags": video_data.get("tags", []),
-            "categoryId": video_data.get("category", "22"),  # 22 = People & Blogs
-            "defaultLanguage": video_data.get("language", "es"),
+            "title":           title,
+            "description":     description,
+            "tags":            tags,
+            "categoryId":      category,
+            "defaultLanguage": language,
         },
         "status": {
-            "privacyStatus": video_data.get("privacy", "public"),
-            "selfDeclaredMadeForKids": video_data.get("made_for_kids", False),
+            "privacyStatus":              privacy,
+            "selfDeclaredMadeForKids":    False,
         },
     }
 
-    # Añadir thumbnail programado si se especifica
-    if video_data.get("scheduled_publish_at"):
-        body["status"]["publishAt"] = video_data["scheduled_publish_at"]
-        body["status"]["privacyStatus"] = "private"  # Requerido para programación
-
     media = MediaFileUpload(
         str(video_file),
-        chunksize=8 * 1024 * 1024,  # Chunks de 8MB
+        chunksize=8 * 1024 * 1024,
         resumable=True,
     )
-
-    print(f"Subiendo: {video_data['title']}")
-    print(f"Archivo:  {video_file} ({video_file.stat().st_size / 1_000_000:.1f} MB)")
 
     request = service.videos().insert(
         part=",".join(body.keys()),
@@ -120,51 +98,29 @@ def upload_video(service, video_data):
     while response is None:
         status, response = request.next_chunk()
         if status:
-            progress = int(status.progress() * 100)
-            print(f"  Progreso: {progress}%")
+            pct = int(status.progress() * 100)
+            print(f"    Subida: {pct}%", end="\r")
 
-    return response["id"]
-
-
-def main():
-    print(f"=== YouTube Uploader — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} ===")
-
-    queue_data = load_queue()
-    idx, video_data = get_next_video(queue_data)
-
-    if video_data is None:
-        print("No hay videos pendientes en la cola. ¡Cola vacía!")
-        sys.exit(0)
-
-    print(f"Video seleccionado: [{idx + 1}/{len(queue_data['videos'])}] {video_data['title']}")
-
-    service = get_authenticated_service()
-
-    try:
-        video_id = upload_video(service, video_data)
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
-
-        # Marcar como subido
-        queue_data["videos"][idx]["uploaded"] = True
-        queue_data["videos"][idx]["uploaded_at"] = datetime.now(timezone.utc).isoformat()
-        queue_data["videos"][idx]["youtube_id"] = video_id
-        queue_data["videos"][idx]["youtube_url"] = video_url
-        save_queue(queue_data)
-
-        print(f"\n✓ Video subido exitosamente!")
-        print(f"  URL: {video_url}")
-
-        # Mostrar cuántos quedan
-        pending = sum(1 for v in queue_data["videos"] if not v.get("uploaded"))
-        print(f"  Videos pendientes restantes: {pending}")
-
-    except FileNotFoundError as e:
-        print(f"\nERROR: {e}")
-        sys.exit(1)
-    except HttpError as e:
-        print(f"\nERROR de la API de YouTube: {e}")
-        sys.exit(1)
+    video_id  = response["id"]
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    print(f"\n  ✓ Video subido: {video_url}")
+    return video_url
 
 
 if __name__ == "__main__":
-    main()
+    import argparse, json as _json
+
+    parser = argparse.ArgumentParser(description="Sube un video a YouTube")
+    parser.add_argument("video",       help="Ruta al archivo MP4")
+    parser.add_argument("--title",       default="Video Tech", help="Título")
+    parser.add_argument("--description", default="", help="Descripción")
+    parser.add_argument("--tags",        default="tecnología", help="Tags separados por coma")
+    args = parser.parse_args()
+
+    url = upload_video(
+        args.video,
+        title=args.title,
+        description=args.description,
+        tags=[t.strip() for t in args.tags.split(",")],
+    )
+    print(url)

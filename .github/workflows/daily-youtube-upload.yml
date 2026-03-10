@@ -1,76 +1,79 @@
-name: Subida Diaria a YouTube
+name: Pipeline Diario — TechNoticias a YouTube
 
 on:
-  # Ejecutar todos los días a las 10:00 AM (hora de España/Madrid = UTC+1/+2)
-  # Para España en invierno (UTC+1): usar 09:00 UTC
-  # Para España en verano  (UTC+2): usar 08:00 UTC
+  # Todos los días a las 09:00 UTC = 10:00 AM España (invierno) / 11:00 AM (verano)
   schedule:
-    - cron: "0 9 * * *"  # 10:00 AM hora España (invierno) / 11:00 AM (verano)
+    - cron: "0 9 * * *"
 
-  # Permite ejecutar manualmente desde la pestaña "Actions" de GitHub
+  # Ejecución manual desde la pestaña "Actions" de GitHub
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Prueba sin subir realmente (dry run)"
+        description: "Generar video SIN subir a YouTube (dry run)"
         required: false
         default: "false"
-        type: boolean
+        type: choice
+        options: ["false", "true"]
 
 jobs:
-  upload:
-    name: Subir video del día
+  generate-and-upload:
+    name: Generar video y subir a YouTube
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # Necesario para hacer commit de la cola actualizada
+    timeout-minutes: 60    # El video puede tardar ~10-15 min en generarse
 
     steps:
+      # ── Checkout ────────────────────────────────────────────
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar Python
+      # ── Sistema: ffmpeg y fuentes ────────────────────────────
+      - name: Instalar ffmpeg y fuentes del sistema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            fonts-liberation \
+            fonts-dejavu-core
+
+      # ── Python ───────────────────────────────────────────────
+      - name: Configurar Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias Python
         run: pip install -r requirements.txt
 
-      - name: Verificar cola de videos
+      # ── Diagnóstico ──────────────────────────────────────────
+      - name: Verificar entorno
         run: |
-          echo "--- Estado actual de la cola ---"
-          python3 -c "
-          import json
-          with open('video_queue.json') as f:
-              data = json.load(f)
-          total = len(data['videos'])
-          uploaded = sum(1 for v in data['videos'] if v.get('uploaded'))
-          pending = total - uploaded
-          print(f'Total: {total} | Subidos: {uploaded} | Pendientes: {pending}')
-          if pending > 0:
-              nxt = next(v for v in data['videos'] if not v.get('uploaded'))
-              print(f'Siguiente: {nxt[\"title\"]}')
-          else:
-              print('AVISO: No quedan videos pendientes en la cola.')
-          "
+          echo "--- ffmpeg ---"
+          ffmpeg -version | head -1
+          echo "--- Python ---"
+          python --version
+          echo "--- Paquetes instalados ---"
+          pip list | grep -E "moviepy|Pillow|anthropic|edge.tts|feedparser|google"
 
-      - name: Subir video a YouTube
-        if: ${{ github.event.inputs.dry_run != 'true' }}
+      # ── Pipeline principal ───────────────────────────────────
+      - name: Ejecutar pipeline diario
         env:
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-        run: python3 youtube_uploader.py
-
-      - name: [DRY RUN] Simular subida
-        if: ${{ github.event.inputs.dry_run == 'true' }}
-        run: echo "DRY RUN: Se haría la subida, pero no se ejecuta."
-
-      - name: Guardar cola actualizada en el repositorio
-        if: ${{ github.event.inputs.dry_run != 'true' }}
+          ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
+          YOUTUBE_CLIENT_ID:       ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET:   ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN:   ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add video_queue.json
-          git diff --staged --quiet || git commit -m "chore: marcar video del día como subido [$(date '+%Y-%m-%d')]"
-          git push
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python daily_pipeline.py --dry-run
+          else
+            python daily_pipeline.py
+          fi
+
+      # ── Guardar el video como artefacto (solo en dry-run) ────
+      - name: Guardar video como artefacto
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-preview-${{ github.run_id }}
+          path: /tmp/daily_tech_video.mp4
+          retention-days: 3

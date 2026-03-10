@@ -1,4 +1,23 @@
+# YouTube Data API
 google-api-python-client==2.154.0
 google-auth==2.37.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.1
+
+# RSS / noticias
+feedparser==6.0.11
+
+# Claude API (generación de guion)
+anthropic==0.49.0
+
+# Text-to-Speech (Microsoft Edge TTS, gratuito)
+edge-tts==7.0.2
+
+# Creación de video
+moviepy==1.0.3
+Pillow==10.4.0
+numpy==1.26.4
+
+# Soporte de audio para moviepy
+imageio==2.35.1
+imageio-ffmpeg==0.5.1
