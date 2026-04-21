@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/news_radio_24_7/render_server
-ExecStart=/usr/bin/python3 /opt/news_radio_24_7/render_server/render_server.py
+ExecStart=/opt/news_radio_24_7/render_server/.venv/bin/python /opt/news_radio_24_7/render_server/render_server.py
 Restart=always
 RestartSec=5
 Environment=RENDER_HOST=0.0.0.0

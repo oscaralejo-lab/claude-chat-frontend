@@ -47,16 +47,21 @@ apt-get install -y --no-install-recommends \
     ca-certificates
 ok "Dependencias del sistema instaladas"
 
-# ── 3. Instalar dependencias Python ──────────────────────────────────────────
-info "Instalando Flask y Playwright..."
-pip3 install --quiet --break-system-packages flask>=3.0 playwright>=1.44 2>/dev/null \
-  || pip3 install --quiet flask>=3.0 playwright>=1.44
+# ── 3. Crear virtualenv e instalar dependencias Python ───────────────────────
+VENV_DIR="${INSTALL_DIR}/.venv"
+info "Creando virtualenv en ${VENV_DIR}..."
+python3 -m venv "${VENV_DIR}"
+ok "Virtualenv creado"
+
+info "Instalando Flask y Playwright en el virtualenv..."
+"${VENV_DIR}/bin/pip" install --quiet --upgrade pip
+"${VENV_DIR}/bin/pip" install --quiet "flask>=3.0" "playwright>=1.44"
 ok "Paquetes Python instalados"
 
 # ── 4. Instalar navegador Playwright (Chromium) ───────────────────────────────
 info "Instalando Chromium para Playwright (puede tardar varios minutos)..."
-python3 -m playwright install chromium
-python3 -m playwright install-deps chromium
+"${VENV_DIR}/bin/python" -m playwright install chromium
+"${VENV_DIR}/bin/python" -m playwright install-deps chromium
 ok "Chromium instalado"
 
 # ── 5. Descargar archivos del servidor desde GitHub ───────────────────────────
@@ -90,7 +95,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=/usr/bin/python3 ${INSTALL_DIR}/render_server.py
+ExecStart=${INSTALL_DIR}/.venv/bin/python ${INSTALL_DIR}/render_server.py
 Restart=always
 RestartSec=5
 Environment=RENDER_HOST=0.0.0.0
