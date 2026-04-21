@@ -30,6 +30,9 @@ OUTPUT_DIR = Path(os.environ.get("RENDER_OUTPUT_DIR", "/opt/news_radio_24_7/rend
 ROOT_DIR = Path(__file__).resolve().parent
 WEB_DIR = ROOT_DIR.parent / "web"
 
+LIVE2D_VENDOR_DIR = Path(os.environ.get("LIVE2D_VENDOR_DIR", str(WEB_DIR / "vendor" / "live2d")))
+LIVE2D_MODEL_DIR  = Path(os.environ.get("LIVE2D_MODEL_DIR",  str(WEB_DIR / "live2d")))
+
 DISPLAY_LOCK = threading.Lock()
 USED_DISPLAYS: set[str] = set()
 ACTIVE_RENDER_DIRS: dict[str, Path] = {}
@@ -266,6 +269,20 @@ def serve_tmp_asset(asset_path: str):
     if not temp_dir:
         return _json_error("Not found", 404)
     return send_from_directory(str(temp_dir), filename)
+
+
+@app.route("/live2d-vendor/<path:filename>", methods=["GET"])
+def live2d_vendor(filename: str):
+    if not LIVE2D_VENDOR_DIR.is_dir():
+        return _json_error("Live2D vendor not found", 404)
+    return send_from_directory(LIVE2D_VENDOR_DIR, filename)
+
+
+@app.route("/live2d-model/<path:filename>", methods=["GET"])
+def live2d_model(filename: str):
+    if not LIVE2D_MODEL_DIR.is_dir():
+        return _json_error("Live2D model not found", 404)
+    return send_from_directory(LIVE2D_MODEL_DIR, filename)
 
 
 @app.route("/health", methods=["GET"])

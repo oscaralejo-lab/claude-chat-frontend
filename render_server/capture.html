@@ -14,66 +14,88 @@
       background: #0a0a0a;
       font-family: 'Segoe UI', system-ui, sans-serif;
       color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
 
+    /* Foto de la noticia como fondo desenfocado */
     #bg {
       position: fixed;
       inset: 0;
       background-size: cover;
       background-position: center;
       background-repeat: no-repeat;
-      filter: brightness(0.45) blur(2px);
+      filter: brightness(0.5) blur(2px);
       transform: scale(1.05);
     }
 
-    #overlay {
-      position: relative;
-      z-index: 1;
+    /* Canvas del avatar Live2D — esquina inferior izquierda, sobre todo */
+    #avatar-canvas {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: 32%;
+      height: 80%;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    /* Banda inferior estilo "lower third" de noticias TV */
+    #lower-third {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 22%;
+      background: linear-gradient(to top, rgba(0,0,0,0.93) 60%, transparent);
+      z-index: 3;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 100%;
-      padding: 60px 80px;
-      text-align: center;
+      align-items: flex-end;
+      padding: 0 4% 3.5%;
+    }
+
+    /* Contenido de texto: empieza después del avatar (32 % de ancho) */
+    #lt-content {
+      flex: 1;
+      padding-left: 33%;
+      overflow: hidden;
     }
 
     #logo {
-      font-size: 1rem;
-      letter-spacing: 0.35em;
+      font-size: 0.7rem;
+      letter-spacing: 0.3em;
       text-transform: uppercase;
       color: #f59e0b;
-      margin-bottom: 32px;
-      opacity: 0.9;
+      margin-bottom: 5px;
     }
 
     #title {
-      font-size: clamp(1.8rem, 4vw, 3.2rem);
+      font-size: clamp(1rem, 2.6vw, 2rem);
       font-weight: 700;
       line-height: 1.2;
-      max-width: 900px;
-      text-shadow: 0 2px 12px rgba(0,0,0,0.8);
-      margin-bottom: 20px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
     }
 
     #subtitle {
-      font-size: clamp(1rem, 2vw, 1.5rem);
-      font-weight: 400;
+      font-size: clamp(0.75rem, 1.4vw, 1rem);
       color: #d1d5db;
-      max-width: 700px;
-      line-height: 1.5;
-      text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.8);
     }
 
+    /* Waveform animado a la derecha del lower-third */
     #waveform {
       display: flex;
       align-items: center;
-      gap: 5px;
-      margin-top: 48px;
+      gap: 4px;
+      margin-left: 20px;
+      flex-shrink: 0;
+      padding-bottom: 4px;
     }
 
     #waveform span {
@@ -84,16 +106,14 @@
       animation: wave 1.2s ease-in-out infinite;
     }
 
-    #waveform span:nth-child(1)  { height: 14px; animation-delay: 0.0s; }
-    #waveform span:nth-child(2)  { height: 28px; animation-delay: 0.1s; }
-    #waveform span:nth-child(3)  { height: 20px; animation-delay: 0.2s; }
-    #waveform span:nth-child(4)  { height: 36px; animation-delay: 0.3s; }
-    #waveform span:nth-child(5)  { height: 24px; animation-delay: 0.4s; }
-    #waveform span:nth-child(6)  { height: 32px; animation-delay: 0.5s; }
-    #waveform span:nth-child(7)  { height: 18px; animation-delay: 0.6s; }
-    #waveform span:nth-child(8)  { height: 28px; animation-delay: 0.7s; }
-    #waveform span:nth-child(9)  { height: 22px; animation-delay: 0.8s; }
-    #waveform span:nth-child(10) { height: 14px; animation-delay: 0.9s; }
+    #waveform span:nth-child(1) { height: 12px; animation-delay: 0.0s; }
+    #waveform span:nth-child(2) { height: 22px; animation-delay: 0.1s; }
+    #waveform span:nth-child(3) { height: 16px; animation-delay: 0.2s; }
+    #waveform span:nth-child(4) { height: 28px; animation-delay: 0.3s; }
+    #waveform span:nth-child(5) { height: 20px; animation-delay: 0.4s; }
+    #waveform span:nth-child(6) { height: 26px; animation-delay: 0.5s; }
+    #waveform span:nth-child(7) { height: 14px; animation-delay: 0.6s; }
+    #waveform span:nth-child(8) { height: 22px; animation-delay: 0.7s; }
 
     @keyframes wave {
       0%, 100% { transform: scaleY(1); opacity: 0.8; }
@@ -103,46 +123,187 @@
 </head>
 <body>
   <div id="bg"></div>
-  <div id="overlay">
-    <div id="logo">📻 News Radio 24/7</div>
-    <div id="title"></div>
-    <div id="subtitle"></div>
+
+  <!-- Canvas transparente del avatar Live2D -->
+  <canvas id="avatar-canvas"></canvas>
+
+  <!-- Lower-third: logo + titulo + subtitulo + waveform -->
+  <div id="lower-third">
+    <div id="lt-content">
+      <div id="logo">📻 News Radio 24/7</div>
+      <div id="title"></div>
+      <div id="subtitle"></div>
+    </div>
     <div id="waveform">
-      <span></span><span></span><span></span><span></span><span></span>
-      <span></span><span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
     </div>
   </div>
 
   <script>
-    (function () {
-      const params = new URLSearchParams(location.search);
-      const audioSrc = params.get("audio") || "";
-      const bgSrc    = params.get("bg")    || "";
-      const title    = params.get("title") || "";
-      const subtitle = params.get("subtitle") || "";
+  (function () {
+    "use strict";
 
-      if (bgSrc) {
-        document.getElementById("bg").style.backgroundImage = `url('${bgSrc}')`;
+    const params   = new URLSearchParams(location.search);
+    const audioSrc = params.get("audio")    || "";
+    const bgSrc    = params.get("bg")       || "";
+    const title    = params.get("title")    || "";
+    const subtitle = params.get("subtitle") || "";
+
+    /* ── Fondo y textos ─────────────────────────────────────── */
+    if (bgSrc) {
+      document.getElementById("bg").style.backgroundImage = `url('${bgSrc}')`;
+    }
+    document.getElementById("title").textContent    = title;
+    document.getElementById("subtitle").textContent = subtitle;
+
+    if (!audioSrc) {
+      window.__renderDone = true;
+      return;
+    }
+
+    /* ── Audio ──────────────────────────────────────────────── */
+    const audio = new Audio(audioSrc);
+    audio.crossOrigin = "anonymous";
+
+    audio.addEventListener("ended", function () {
+      setMouth(0);
+      window.__renderDone = true;
+    });
+    audio.addEventListener("error", function () {
+      window.__renderDone = true;
+    });
+
+    /* ── AudioContext para lipsync ──────────────────────────── */
+    var audioCtx = null;
+    var analyser  = null;
+    var lipBuf    = null;
+
+    /* Punto medio de muestras de audio sin signo de 8 bits (0-255 → -1..1) */
+    var AUDIO_SAMPLE_MIDPOINT = 128;
+    /* Multiplicador para escalar la amplitud RMS al rango de apertura de boca */
+    var LIP_SYNC_MULTIPLIER   = 4;
+
+    function initAudioContext() {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser  = audioCtx.createAnalyser();
+        analyser.fftSize               = 256;
+        analyser.smoothingTimeConstant = 0.75;
+        var source = audioCtx.createMediaElementSource(audio);
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        lipBuf = new Uint8Array(analyser.frequencyBinCount);
+      } catch (err) {
+        console.warn("AudioContext no disponible:", err);
       }
-      document.getElementById("title").textContent    = title;
-      document.getElementById("subtitle").textContent = subtitle;
+    }
 
-      if (!audioSrc) {
-        window.__renderDone = true;
-        return;
+    /* ── Modelo Live2D y lipsync ────────────────────────────── */
+    var model        = null;
+    var mouthParamId = null;
+    var MOUTH_PARAMS = ["ParamMouthOpenY", "PARAM_MOUTH_OPEN_Y", "Param_MouthOpenY"];
+
+    function resolveMouthParam() {
+      for (var i = 0; i < MOUTH_PARAMS.length; i++) {
+        try {
+          var idx = model.internalModel.coreModel.getParameterIndex(MOUTH_PARAMS[i]);
+          if (idx >= 0) { mouthParamId = MOUTH_PARAMS[i]; return; }
+        } catch (_) { /* continuar */ }
       }
+    }
 
-      const audio = new Audio(audioSrc);
-      audio.addEventListener("ended", function () {
-        window.__renderDone = true;
+    function setMouth(val) {
+      if (!model || !mouthParamId) return;
+      try {
+        model.internalModel.coreModel.setParameterValueById(
+          mouthParamId, Math.max(0, Math.min(1, val))
+        );
+      } catch (_) { /* ignorar */ }
+    }
+
+    function lipSyncTick() {
+      requestAnimationFrame(lipSyncTick);
+      if (!analyser || !lipBuf) return;
+      analyser.getByteTimeDomainData(lipBuf);
+      var sum = 0;
+      for (var i = 0; i < lipBuf.length; i++) {
+        var v = (lipBuf[i] / AUDIO_SAMPLE_MIDPOINT) - 1;
+        sum += v * v;
+      }
+      setMouth(Math.min(1, Math.sqrt(sum / lipBuf.length) * LIP_SYNC_MULTIPLIER));
+    }
+
+    /* Escala y ancla el modelo al fondo del canvas */
+    function fitModel(pixiApp, liveModel) {
+      var w     = pixiApp.renderer.width;
+      var h     = pixiApp.renderer.height;
+      var origW = liveModel.width;
+      var origH = liveModel.height;
+      var scale = Math.min(w / origW, h / origH) * 0.95;
+      liveModel.scale.set(scale);
+      liveModel.x = (w - origW * scale) / 2;
+      liveModel.y = h - origH * scale;
+    }
+
+    /* Carga dinámica de scripts — no bloquea el render si fallan */
+    function loadScript(src) {
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src     = src;
+        s.onload  = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
       });
-      audio.addEventListener("error", function () {
-        window.__renderDone = true;
-      });
-      audio.play().catch(function () {
-        window.__renderDone = true;
-      });
-    })();
+    }
+
+    function initAvatar() {
+      return loadScript("/live2d-vendor/live2dcubismcore.min.js")
+        .then(function () { return loadScript("/live2d-vendor/pixi.min.js"); })
+        .then(function () { return loadScript("/live2d-vendor/cubism4.min.js"); })
+        .then(function () {
+          var canvas = document.getElementById("avatar-canvas");
+          var w = canvas.offsetWidth  || 400;
+          var h = canvas.offsetHeight || 640;
+
+          var pixiApp = new PIXI.Application({
+            view:            canvas,
+            width:           w,
+            height:          h,
+            backgroundAlpha: 0,
+            antialias:       true,
+            resolution:      1,
+          });
+
+          var MODEL_URL = "/live2d-model/miara/extracted/miara_pro_en/runtime/miara_pro_t03.model3.json";
+          var Live2DModel = (PIXI.live2d || window.PIXI.live2d).Live2DModel;
+
+          return Live2DModel.from(MODEL_URL, { autoInteract: false })
+            .then(function (liveModel) {
+              model = liveModel;
+              pixiApp.stage.addChild(model);
+              resolveMouthParam();
+              fitModel(pixiApp, model);
+            });
+        })
+        .catch(function (err) {
+          console.warn("Avatar Live2D no disponible:", err);
+          var c = document.getElementById("avatar-canvas");
+          if (c) c.style.display = "none";
+        });
+    }
+
+    /* ── Arranque ───────────────────────────────────────────── */
+    initAudioContext();
+    requestAnimationFrame(lipSyncTick);
+
+    audio.play().catch(function () {
+      window.__renderDone = true;
+    });
+
+    /* El avatar se carga en paralelo — el audio no espera por él */
+    initAvatar();
+  })();
   </script>
 </body>
 </html>
