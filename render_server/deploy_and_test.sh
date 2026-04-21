@@ -34,12 +34,18 @@ ok()   { echo -e "${GREEN}[OK]${NC}  $*"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 info() { echo -e "${YELLOW}[INFO]${NC} $*"; }
 
-# ── 1. Restaurar render_server.py ─────────────────────────────────────────────
+# ── 1. Restaurar archivos del servidor desde GitHub ───────────────────────────
 info "Descargando render_server.py desde GitHub..."
 curl --fail --location --silent --show-error --max-time 30 \
      "${REPO_RAW}/render_server/render_server.py" \
      -o "${INSTALL_DIR}/render_server.py"
 ok "render_server.py restaurado"
+
+info "Descargando capture.html desde GitHub..."
+curl --fail --location --silent --show-error --max-time 30 \
+     "${REPO_RAW}/render_server/capture.html" \
+     -o "${INSTALL_DIR}/capture.html"
+ok "capture.html restaurado"
 
 # ── 2. Reiniciar servicio ─────────────────────────────────────────────────────
 info "Reiniciando ${SERVICE}..."
@@ -76,7 +82,7 @@ fi
 
 RESPONSE=$(
   curl --fail --silent --max-time 180 \
-    "${CURL_AUTH[@]}" \
+    ${CURL_AUTH[@]+"${CURL_AUTH[@]}"} \
     -F "audio=@${TEST_MP3};type=audio/mpeg" \
     -F "title=${TITLE}" \
     -F "subtitle=${SUBTITLE}" \

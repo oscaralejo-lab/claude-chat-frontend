@@ -1,0 +1,21 @@
+[Unit]
+Description=News Radio 24/7 – Render Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/news_radio_24_7/render_server
+ExecStart=/usr/bin/python3 /opt/news_radio_24_7/render_server/render_server.py
+Restart=always
+RestartSec=5
+Environment=RENDER_HOST=0.0.0.0
+Environment=RENDER_PORT=5001
+Environment=RENDER_OUTPUT_DIR=/opt/news_radio_24_7/render_output
+Environment=LIVE2D_VENDOR_DIR=/opt/news_radio_24_7/web/vendor/live2d
+Environment=LIVE2D_MODEL_DIR=/opt/news_radio_24_7/web/live2d
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
