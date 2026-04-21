@@ -304,9 +304,12 @@
             });
         })
         .catch(function (err) {
-          console.warn("Avatar Live2D no disponible:", err);
+          console.error("[Avatar] No se pudo cargar el modelo Live2D:", err);
           var c = document.getElementById("avatar-canvas");
           if (c) c.style.display = "none";
+          /* El avatar no está disponible — el texto del lower-third ocupa todo el ancho */
+          var ltContent = document.getElementById("lt-content");
+          if (ltContent) ltContent.style.paddingLeft = "0";
         });
     }
 
