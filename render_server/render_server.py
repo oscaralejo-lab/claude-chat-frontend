@@ -167,10 +167,6 @@ def _render_video(temp_dir, output_path, title, subtitle, bg_path, width, height
         ]
         ffmpeg_env = os.environ.copy()
         ffmpeg_env["DISPLAY"] = display
-        ffmpeg_proc = subprocess.Popen(
-            ffmpeg_cmd, stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=ffmpeg_env,
-        )
         browser_env = os.environ.copy()
         browser_env["DISPLAY"] = display
         with sync_playwright() as p:
@@ -182,6 +178,19 @@ def _render_video(temp_dir, output_path, title, subtitle, bg_path, width, height
             context = browser.new_context(viewport={"width": width, "height": height})
             page = context.new_page()
             page.goto(capture_url, wait_until="domcontentloaded", timeout=60_000)
+            # Wait until the page background has loaded and layout is painted.
+            # This prevents FFmpeg from recording blank frames at the start.
+            page.wait_for_function("() => window.__pageReady === true", timeout=30_000)
+            # Start FFmpeg NOW — the page is already visible on the Xvfb display.
+            ffmpeg_proc = subprocess.Popen(
+                ffmpeg_cmd, stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=ffmpeg_env,
+            )
+            # Brief ramp-up so FFmpeg has established its recording stream
+            # before audio starts, avoiding any dropped frames at the very beginning.
+            time.sleep(0.4)
+            # Trigger audio playback and lipsync inside the page.
+            page.evaluate("window.__startRender()")
             page.wait_for_function("() => window.__renderDone === true", timeout=RENDER_TIMEOUT_SECONDS * 1000)
             browser.close()
         if ffmpeg_proc.poll() is None and ffmpeg_proc.stdin:

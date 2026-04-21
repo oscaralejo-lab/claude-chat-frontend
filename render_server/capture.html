@@ -144,18 +144,35 @@
   (function () {
     "use strict";
 
-    const params   = new URLSearchParams(location.search);
-    const audioSrc = params.get("audio")    || "";
-    const bgSrc    = params.get("bg")       || "";
-    const title    = params.get("title")    || "";
-    const subtitle = params.get("subtitle") || "";
+    var params   = new URLSearchParams(location.search);
+    var audioSrc = params.get("audio")    || "";
+    var bgSrc    = params.get("bg")       || "";
+    var title    = params.get("title")    || "";
+    var subtitle = params.get("subtitle") || "";
 
     /* ── Fondo y textos ─────────────────────────────────────── */
-    if (bgSrc) {
-      document.getElementById("bg").style.backgroundImage = `url('${bgSrc}')`;
-    }
     document.getElementById("title").textContent    = title;
     document.getElementById("subtitle").textContent = subtitle;
+
+    /*
+     * __pageReady: Playwright espera esta señal antes de arrancar FFmpeg.
+     * Se dispara cuando el fondo ya cargó (o de inmediato si no hay fondo).
+     * Así FFmpeg nunca graba pantalla negra/blanca al inicio.
+     */
+    function markPageReady() {
+      window.__pageReady = true;
+    }
+
+    if (bgSrc) {
+      document.getElementById("bg").style.backgroundImage = "url('" + bgSrc + "')";
+      /* Precargar para detectar cuándo está pintado en pantalla */
+      var bgImg = new Image();
+      bgImg.onload  = markPageReady;
+      bgImg.onerror = markPageReady; /* fondo roto → seguimos igual */
+      bgImg.src = bgSrc;
+    } else {
+      markPageReady();
+    }
 
     if (!audioSrc) {
       window.__renderDone = true;
@@ -163,7 +180,7 @@
     }
 
     /* ── Audio ──────────────────────────────────────────────── */
-    const audio = new Audio(audioSrc);
+    var audio = new Audio(audioSrc);
     audio.crossOrigin = "anonymous";
 
     audio.addEventListener("ended", function () {
@@ -293,16 +310,23 @@
         });
     }
 
-    /* ── Arranque ───────────────────────────────────────────── */
-    initAudioContext();
-    requestAnimationFrame(lipSyncTick);
-
-    audio.play().catch(function () {
-      window.__renderDone = true;
-    });
-
-    /* El avatar se carga en paralelo — el audio no espera por él */
-    initAvatar();
+    /*
+     * __startRender: llamado por Playwright DESPUÉS de arrancar FFmpeg.
+     * Inicia el audio y el lipsync solo cuando la grabación ya está corriendo.
+     * Esto garantiza que el primer frame del audio coincide con el video.
+     */
+    window.__startRender = function () {
+      initAudioContext();
+      requestAnimationFrame(lipSyncTick);
+      if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+      audio.play().catch(function () {
+        window.__renderDone = true;
+      });
+      /* Avatar en paralelo — si no carga, el video sigue con fondo + audio */
+      initAvatar();
+    };
   })();
   </script>
 </body>
