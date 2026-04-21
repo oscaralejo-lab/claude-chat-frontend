@@ -86,6 +86,8 @@ def _ensure_live2d_vendor() -> None:
 _ensure_live2d_vendor()
 VIDEO_FILENAME_RE = re.compile(r"^[a-f0-9]{32}\.mp4$")
 TMP_ASSET_RE = re.compile(r"^([a-f0-9]{32})/(audio\.mp3|bg\.jpg)$")
+# Plain filename (no subdirectory) — used by direct debug/test invocations of capture.html
+TMP_DIRECT_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.(mp3|jpg)$")
 
 
 def _json_error(message: str, status: int = 400):
@@ -313,15 +315,19 @@ def vendor_files(filename: str):
 @app.route("/tmp/<path:asset_path>", methods=["GET"])
 def serve_tmp_asset(asset_path: str):
     m = TMP_ASSET_RE.fullmatch(asset_path)
-    if not m:
-        return _json_error("Not found", 404)
-    job_id = m.group(1)
-    filename = m.group(2)
-    with ACTIVE_RENDER_LOCK:
-        temp_dir = ACTIVE_RENDER_DIRS.get(job_id)
-    if not temp_dir:
-        return _json_error("Not found", 404)
-    return send_from_directory(str(temp_dir), filename)
+    if m:
+        job_id = m.group(1)
+        filename = m.group(2)
+        with ACTIVE_RENDER_LOCK:
+            temp_dir = ACTIVE_RENDER_DIRS.get(job_id)
+        if not temp_dir:
+            return _json_error("Not found", 404)
+        return send_from_directory(str(temp_dir), filename)
+    # Plain filename (e.g. /tmp/test15.mp3) — used by direct debug invocations.
+    # Only simple basenames are accepted; no path separators or job-id prefixes.
+    if TMP_DIRECT_RE.fullmatch(asset_path):
+        return send_from_directory("/tmp", asset_path)
+    return _json_error("Not found", 404)
 
 
 @app.route("/live2d-vendor/<path:filename>", methods=["GET"])
