@@ -33,6 +33,14 @@ WEB_DIR = ROOT_DIR.parent / "web"
 LIVE2D_VENDOR_DIR = Path(os.environ.get("LIVE2D_VENDOR_DIR", str(WEB_DIR / "vendor" / "live2d")))
 LIVE2D_MODEL_DIR  = Path(os.environ.get("LIVE2D_MODEL_DIR",  str(WEB_DIR / "live2d")))
 
+# CDN sources for Live2D vendor JS files.
+# These are downloaded once on startup (if missing) and then served locally.
+LIVE2D_VENDOR_CDNS: dict[str, str] = {
+    "live2dcubismcore.min.js": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
+    "pixi.min.js":             "https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js",
+    "cubism4.min.js":          "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js",
+}
+
 DISPLAY_LOCK = threading.Lock()
 USED_DISPLAYS: set[str] = set()
 ACTIVE_RENDER_DIRS: dict[str, Path] = {}
@@ -40,6 +48,42 @@ ACTIVE_RENDER_LOCK = threading.Lock()
 
 app = Flask(__name__)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _ensure_live2d_vendor() -> None:
+    """Download Live2D vendor JS files from CDN if they are not present locally.
+
+    The files are only downloaded once; on subsequent starts they are already on
+    disk and the function returns immediately.  Failures are logged as warnings
+    so a missing internet connection does not prevent the server from starting
+    (the avatar will simply be absent from those renders).
+    """
+    LIVE2D_VENDOR_DIR.mkdir(parents=True, exist_ok=True)
+    for filename, url in LIVE2D_VENDOR_CDNS.items():
+        dest = LIVE2D_VENDOR_DIR / filename
+        if dest.exists():
+            continue
+        app.logger.info("Live2D vendor: descargando %s …", filename)
+        result = subprocess.run(
+            [
+                "curl", "--fail", "--location", "--silent", "--show-error",
+                "--max-time", "60", "--output", str(dest), url,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            app.logger.warning(
+                "Live2D vendor: no se pudo descargar %s: %s",
+                filename, result.stderr.strip(),
+            )
+        else:
+            app.logger.info("Live2D vendor: %s descargado OK", filename)
+
+# Invocada al importar el módulo para que los archivos estén disponibles
+# independientemente de cómo se inicie Flask (directamente o vía gunicorn/uwsgi).
+# La función es idempotente: solo descarga archivos que faltan.
+_ensure_live2d_vendor()
 VIDEO_FILENAME_RE = re.compile(r"^[a-f0-9]{32}\.mp4$")
 TMP_ASSET_RE = re.compile(r"^([a-f0-9]{32})/(audio\.mp3|bg\.jpg)$")
 
