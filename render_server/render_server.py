@@ -93,10 +93,10 @@ def _json_error(message: str, status: int = 400):
 
 
 def _is_authorized() -> bool:
+    if not RENDER_BEARER_TOKEN:
+        return True  # No token configured → open access
     auth_header = request.headers.get("Authorization", "")
     expected = f"Bearer {RENDER_BEARER_TOKEN}"
-    if not RENDER_BEARER_TOKEN:
-        return False
     return secrets.compare_digest(auth_header, expected)
 
 
