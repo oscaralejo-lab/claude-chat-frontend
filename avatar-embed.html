@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<!--
+  avatar-embed.html
+  ==================
+  Página embebible del avatar Live2D "Miara Pro" con lipsync en tiempo real.
+
+  USO RÁPIDO — incrustar en cualquier proyecto:
+  ─────────────────────────────────────────────
+  <iframe
+    src="https://TU-DOMINIO/avatar-embed.html"
+    width="400" height="600"
+    style="border:none; background:transparent;"
+    allow="autoplay; microphone"
+  ></iframe>
+
+  DEPENDENCIAS que deben estar accesibles desde el servidor que sirve este archivo:
+  ──────────────────────────────────────────────────────────────────────────────────
+  /vendor/live2d/live2dcubismcore.min.js   ← Motor Cubism 4
+  /vendor/live2d/pixi.min.js               ← Renderer 2D
+  /vendor/live2d/cubism4.min.js            ← Integración Live2D + Pixi
+  /live2d/miara/extracted/miara_pro_en/runtime/miara_pro_t03.model3.json  ← Modelo
+
+  CONTROL DESDE LA PÁGINA PADRE vía postMessage:
+  ───────────────────────────────────────────────
+  // Hablar (lipsync con audio ya en reproducción)
+  iframeEl.contentWindow.postMessage({ type: "speak", audioSrc: "/audio/noticia.mp3" }, "*");
+
+  // Expresión (happy | sad | surprised | angry | neutral)
+  iframeEl.contentWindow.postMessage({ type: "expression", name: "happy" }, "*");
+
+  // Detener
+  iframeEl.contentWindow.postMessage({ type: "stop" }, "*");
+
+  CONTROL DIRECTO si no usas iframe (mismo origen):
+  ───────────────────────────────────────────────────
+  window.AvatarEmbed.speak("/audio/noticia.mp3");
+  window.AvatarEmbed.expression("happy");
+  window.AvatarEmbed.stop();
+-->
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Avatar Live2D — Embed</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    #avatar-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Estado de carga */
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #a0aec0;
+      font-family: system-ui, sans-serif;
+      font-size: 0.85rem;
+      background: rgba(0,0,0,0.6);
+      transition: opacity 0.4s;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-top-color: #f59e0b;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>Cargando avatar…</span>
+  </div>
+  <canvas id="avatar-canvas"></canvas>
+
+  <!-- ── Vendors ── -->
+  <script src="/vendor/live2d/live2dcubismcore.min.js"></script>
+  <script src="/vendor/live2d/pixi.min.js"></script>
+  <script src="/vendor/live2d/cubism4.min.js"></script>
+
+  <script>
+  (function () {
+    "use strict";
+
+    /* ── Configuración ────────────────────────────────────────────── */
+    const MODEL_URL = "/live2d/miara/extracted/miara_pro_en/runtime/miara_pro_t03.model3.json";
+
+    /* Parámetros Live2D que controlan la boca */
+    const MOUTH_PARAMS = [
+      "ParamMouthOpenY",
+      "PARAM_MOUTH_OPEN_Y",
+      "Param_MouthOpenY",
+    ];
+
+    /* ── Estado interno ───────────────────────────────────────────── */
+    let model        = null;
+    let app          = null;
+    let audioCtx     = null;
+    let analyser     = null;
+    let audioSource  = null;
+    let audioElement = null;
+    let animFrameId  = null;
+    let mouthParamId = null;   /* id resuelto del parámetro de boca */
+
+    /* ── Helpers ──────────────────────────────────────────────────── */
+    function hideLoading() {
+      const el = document.getElementById("loading");
+      if (el) el.classList.add("hidden");
+    }
+
+    function getCanvas() {
+      return document.getElementById("avatar-canvas");
+    }
+
+    /* Resuelve el id real del parámetro de boca en el modelo cargado */
+    function resolveMouthParam() {
+      if (!model) return;
+      for (const name of MOUTH_PARAMS) {
+        try {
+          const idx = model.internalModel.coreModel.getParameterIndex(name);
+          if (idx >= 0) { mouthParamId = name; return; }
+        } catch (_) { /* continuar */ }
+      }
+    }
+
+    /* Actualiza la apertura de boca (0–1) */
+    function setMouth(value) {
+      if (!model || !mouthParamId) return;
+      try {
+        model.internalModel.coreModel.setParameterValueById(
+          mouthParamId,
+          Math.max(0, Math.min(1, value)),
+        );
+      } catch (_) { /* ignorar */ }
+    }
+
+    /* Crea (o reutiliza) el AudioContext y conecta un <audio> al analyser */
+    function connectAudio(audioEl) {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.75;
+        analyser.connect(audioCtx.destination);
+      }
+      if (audioSource) {
+        try { audioSource.disconnect(); } catch (_) { /* ok */ }
+      }
+      audioSource = audioCtx.createMediaElementSource(audioEl);
+      audioSource.connect(analyser);
+    }
+
+    /* Bucle de lipsync: lee la amplitud RMS del micrófono/audio y la mapea a boca */
+    const lipBuf = new Uint8Array(128);
+    function lipSyncTick() {
+      animFrameId = requestAnimationFrame(lipSyncTick);
+      if (!analyser) return;
+      analyser.getByteTimeDomainData(lipBuf);
+      let sum = 0;
+      for (let i = 0; i < lipBuf.length; i++) {
+        const v = (lipBuf[i] / 128) - 1;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / lipBuf.length);
+      setMouth(Math.min(1, rms * 4));
+    }
+
+    /* ── API pública ──────────────────────────────────────────────── */
+
+    /**
+     * Reproduce audio y activa lipsync.
+     * @param {string} src  URL del audio (mp3 / ogg / wav)
+     */
+    function speak(src) {
+      stop();
+      audioElement = new Audio(src);
+      audioElement.crossOrigin = "anonymous";
+      audioElement.addEventListener("ended", () => { setMouth(0); });
+      connectAudio(audioElement);
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      audioElement.play().catch(console.warn);
+      lipSyncTick();
+    }
+
+    /**
+     * Aplica una expresión al modelo.
+     * @param {string} name  happy | sad | surprised | angry | neutral
+     */
+    function expression(name) {
+      if (!model) return;
+      try { model.expression(name); } catch (_) { /* ignorar si no existe */ }
+    }
+
+    /** Detiene la reproducción y el lipsync. */
+    function stop() {
+      if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+      if (audioElement) {
+        try { audioElement.pause(); } catch (_) { /* ok */ }
+        audioElement = null;
+      }
+      if (audioSource) {
+        try { audioSource.disconnect(); } catch (_) { /* ok */ }
+        audioSource = null;
+      }
+      setMouth(0);
+    }
+
+    /* Exportar para uso directo (mismo origen sin iframe) */
+    window.AvatarEmbed = { speak, expression, stop };
+
+    /* ── Escuchar mensajes del padre (uso iframe) ──────────────────── */
+    window.addEventListener("message", (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      switch (msg.type) {
+        case "speak":      speak(msg.audioSrc); break;
+        case "expression": expression(msg.name); break;
+        case "stop":       stop();               break;
+      }
+    });
+
+    /* ── Inicialización del renderer ──────────────────────────────── */
+    async function init() {
+      const canvas = getCanvas();
+
+      /* Pixi app */
+      app = new PIXI.Application({
+        view: canvas,
+        width:  canvas.clientWidth  || window.innerWidth,
+        height: canvas.clientHeight || window.innerHeight,
+        backgroundAlpha: 0,   /* fondo transparente → permite overlay */
+        antialias: true,
+        autoDensity: true,
+        resolution: window.devicePixelRatio || 1,
+      });
+
+      /* Ajuste responsivo */
+      window.addEventListener("resize", () => {
+        app.renderer.resize(window.innerWidth, window.innerHeight);
+        if (model) fitModel();
+      });
+
+      /* Cargar modelo Live2D */
+      const { Live2DModel } = PIXI.live2d || window.PIXI.live2d;
+      model = await Live2DModel.from(MODEL_URL, { autoInteract: false });
+      app.stage.addChild(model);
+
+      resolveMouthParam();
+      fitModel();
+
+      /* Movimiento idle suave de cabeza siguiendo el ratón / touch */
+      document.addEventListener("pointermove", (e) => {
+        if (!model) return;
+        const rx = (e.clientX / window.innerWidth  - 0.5) * 60;
+        const ry = (e.clientY / window.innerHeight - 0.5) * 30;
+        model.internalModel.focusController?.focus(rx, ry);
+      });
+
+      hideLoading();
+    }
+
+    /* Ajusta el modelo al tamaño del canvas manteniendo proporciones */
+    function fitModel() {
+      if (!model) return;
+      const sw = app.renderer.width;
+      const sh = app.renderer.height;
+      const scale = Math.min(sw / model.width, sh / model.height) * 0.95;
+      model.scale.set(scale);
+      model.x = (sw - model.width  * scale) / 2;
+      model.y = (sh - model.height * scale) / 2;
+    }
+
+    /* Esperar a que los vendors estén listos antes de inicializar */
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init().catch(console.error);
+    }
+  })();
+  </script>
+</body>
+</html>
